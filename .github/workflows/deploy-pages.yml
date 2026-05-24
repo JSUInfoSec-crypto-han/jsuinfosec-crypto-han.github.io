@@ -1,0 +1,87 @@
+name: Deploy Organization Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout portal repository
+        uses: actions/checkout@v4
+
+      - name: Clone source repository
+        run: git clone --depth 1 https://github.com/JSUInfoSec-crypto-han/cmijohnson-crypto-learning.git source
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            source/frontend/package-lock.json
+            source/cross-learning/frontend/package-lock.json
+
+      - name: Install classical frontend dependencies
+        working-directory: source/frontend
+        run: npm ci
+
+      - name: Install cross-learning frontend dependencies
+        working-directory: source/cross-learning/frontend
+        run: npm ci
+
+      - name: Build classical crypto site
+        working-directory: source/frontend
+        env:
+          VITE_BASE_PATH: /classical-crypto/
+          VITE_USE_HASH_ROUTER: "true"
+        run: npm run build
+
+      - name: Build cross-learning site
+        working-directory: source/cross-learning/frontend
+        env:
+          VITE_BASE_PATH: /cross-learning/
+          VITE_USE_HASH_ROUTER: "true"
+        run: npm run build
+
+      - name: Stage site
+        shell: bash
+        run: |
+          rm -rf site
+          mkdir -p site/classical-crypto
+          mkdir -p site/cross-learning
+          cp index.html site/index.html
+          cp 404.html site/404.html
+          cp -r announcements site/announcements
+          cp -r source/frontend/dist/. site/classical-crypto/
+          cp -r source/cross-learning/frontend/dist/. site/cross-learning/
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
